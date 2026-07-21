@@ -78,9 +78,18 @@ COMMIT;
 - Indexes: `idx_<table>_<column(s)>` — e.g., `idx_accounts_customer_id`
 - Constraints: `chk_<table>_<rule>`, `fk_<table>_<ref_table>`, `uq_<table>_<column>`
 
-## Authoritative Database After the CBS Split (Version 23+)
+## Database Backup Practice (required from Version 1 onward)
 
-> **Beginning Version 24, all schema changes occur only inside `digistack_cbs`.** The legacy Portal/shared database used by Parts 1–2 is frozen at the moment of Version 23's migration (see Part-3, `V23__migrate_existing_data_to_cbs.sql`) and is never targeted by any migration script numbered `V24` or higher. It's retained read-only only as long as needed for migration verification/rollback, then formally decommissioned — the decommission step must be captured in `SetupDoc-v23.md`, not silently assumed. This closes the gap where the migration convention above never stated which database is authoritative post-split.
+> **Added per the 2026-07-20 architecture review (Finding 2).** Doc 01's VM snapshot discipline backs up the whole VM state, which is not a substitute for a DB-native, restorable backup — a VM snapshot taken mid-write can capture the database in an inconsistent state, and it doesn't give you point-in-time recovery. Real DB backup discipline starts here, in doc 05, from Version 1 — it is not deferred to Part-5 v38.
+
+**Minimum required practice, every environment, from Version 1:**
+
+1. **Daily `pg_dump`** of every database in use at that point in the roadmap (the single shared DB through v22; `digistack_cbs` — and the legacy DB until its v23-era decommission — from v23 onward).
+2. **Weekly restore test** — restore the most recent dump into a scratch database and confirm it loads cleanly and the app can read from it. An untested backup is not a backup.
+3. **Retention:** keep the last 7 daily dumps and the last 4 weekly restore-test confirmations (rolling window) — document the exact retention window and where dumps are stored in the relevant `SetupDoc-v<N>.md`.
+4. **Naming convention:** `digistack_<db_name>_<env>_<YYYYMMDD>.dump` (e.g., `digistack_cbs_dev_20260722.dump`), stored outside the DB VM itself (a second disk, a dedicated backup share, or — from Part-9 v58 onward — the S3-based off-site target already established there).
+
+**What this is not:** this is the *baseline* practice, not the final word on DB continuity. Part-5 v37/v38 still owns the advanced topics this baseline deliberately defers — streaming replication, PITR, automated failover, the full expanded backup inventory across every component (WAS config, IHS, plugin, certs, EARs, Git, dashboards). The daily-dump/weekly-restore-test baseline above exists so that Versions 1–36 aren't running with zero DB-native backup story while waiting for those advanced topics to arrive.
 
 ## Environment-Specific DB Deployment (ties into Environment Promotion Standards)
 
@@ -91,6 +100,10 @@ COMMIT;
 | Prod | Run the exact same migration scripts, in the exact same order, as a documented Change | Reference data only |
 
 **Rule:** the SQL that runs in Prod must be byte-identical to what was tested in UAT. No "quick fix" SQL typed directly into a Prod psql session, ever — that's how real banking outages happen.
+
+## Authoritative Database After the CBS Split (Version 23+)
+
+> **Beginning Version 24, all schema changes occur only inside `digistack_cbs`.** The legacy Portal/shared database used by Parts 1–2 is frozen at the moment of Version 23's migration (see Part-3, `V23__migrate_existing_data_to_cbs.sql`) and is never targeted by any migration script numbered `V24` or higher. It's retained read-only only as long as needed for migration verification/rollback, then formally decommissioned — the decommission step must be captured in `SetupDoc-v23.md`, not silently assumed.
 
 ## Version Control for DB Objects
 
@@ -115,3 +128,8 @@ CREATE TABLE IF NOT EXISTS schema_version (
 ---
 
 *This file is a standing standard. Each version that requires schema changes will produce its own numbered migration script(s) following this convention.*
+
+---
+
+**Change log for this revision (2026-07-20 architecture review):**
+- Added "Database Backup Practice (required from Version 1 onward)" section — daily `pg_dump` + weekly restore test + defined retention, closing the gap where no DB-native backup discipline existed until Part-5 v38.

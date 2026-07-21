@@ -137,6 +137,15 @@ Develop DigiStack CBS, the central banking platform responsible for executing ev
 
 **This version is the architectural pivot point of the entire project.** Everything built across Parts 1–2 lived inside a single EAR with reasonable proximity to the database. From this version forward, ownership of data, endpoints, and infrastructure is explicitly transferred to CBS — see the Migration & Relocation Notes below. Nothing is silently dropped; every Part-1/Part-2 capability is accounted for.
 
+### ⚠️ Architectural Decision: CBS Stays a Single Application (resolved — added 2026-07-20 architecture review, Finding 1)
+
+> A senior-architect review of this roadmap flagged that every satellite service introduced from this version forward (Payment Hub, Notification Service, Reporting Service, and later Branch Portal, Card Portal) gets split into its own independently deployable EAR — but CBS itself, which internally spans CIF, Accounts, Transactions, Products, and (from v30) Loans, never gets decomposed the same way, for the entire life of this roadmap.
+
+**This is a deliberate decision, not an oversight: CBS remains a single application throughout this roadmap.** The reasons:
+- It keeps transaction management simple — CIF, Accounts, and Transactions frequently need to participate in the same local (non-distributed) transaction, which is straightforward inside one EAR/one JVM and considerably harder once split across independently deployed applications (see Version 25's note on why Payment Hub deliberately avoids this problem rather than solving it).
+- The roadmap's primary goal is WebSphere ND administration practice, not microservice decomposition practice — the satellite services already provide ample multi-EAR administration surface (7 WAS EARs + 2 Tomcat apps by end of this Part) without CBS itself needing to be split for that goal to be met.
+- Splitting CBS's internal domains (e.g., separating Loans from core Deposits/Accounts, which have genuinely different lifecycle and regulatory profiles in a real bank) is a legitimate future direction, but is explicitly **out of scope for this roadmap** — it's called out here so the decision is visible rather than silently assumed. If a future Part wants to explore this, it should do so as new, clearly-scoped work, not a retrofit into Parts already built.
+
 ### Banking Features Added
 **Customer**
 - Customer Information
@@ -232,7 +241,7 @@ A one-time migration script, following the standard `V<N>__<description>.sql` co
 
 **Database Migration Scope (cross-reference — see doc 05, updated)**
 
-> **Beginning Version 24, all schema changes occur only inside `digistack_cbs`.** The legacy Portal/shared database (used by Parts 1–2) is frozen at the moment of this migration and is never targeted by any migration script numbered V24 or higher — retained read-only only as long as needed for verification/rollback, then formally decommissioned (capture the decommission step in `SetupDoc-v23.md`, not silently assumed).
+> **Beginning Version 24, all schema changes occur only inside `digistack_cbs`.** The legacy Portal/shared database (used by Parts 1–2) is frozen at the moment of this migration and is never targeted by any migration script numbered V24 or higher — retained read-only only as long as needed for verification/rollback, then formally decommissioned (capture the decommission step in `SetupDoc-v23.md`, not silently assumed). **Doc 05 as of the 2026-07-20 architecture review also now requires a daily `pg_dump` + weekly restore-test baseline for every database in use, from Version 1 onward — not deferred to Part-5 v38.**
 
 **Satellite Services Introduced Here**
 
@@ -350,7 +359,16 @@ Develop DigiStack Payment Hub responsible for routing all electronic payments.
 >
 > Per the Governing Rule: **Payment Hub routes payments and coordinates settlement, but never updates balances directly.** Settlement is confirmed back to CBS, which alone performs the write to `digistack_cbs`.
 
-`SetupDoc-v25.md` should include Payment Hub's own build/deploy steps, distinct from CBS's, and note the startup-order dependency (CBS must be up first) in its Pre-Deployment Checklist.
+### ⚠️ Why This Isn't a Distributed (Cross-EAR) Transaction (resolved — added 2026-07-20 architecture review, Finding 3)
+
+> A senior-architect review flagged that this deployment model — Payment Hub coordinates, CBS alone writes — is, functionally, a **Saga / compensating-transaction pattern**: async coordination between two independently deployed applications, instead of one shared distributed (XA) transaction spanning both EARs. Worth stating explicitly, since the *why* matters as much as the rule itself:
+
+WebSphere's Transaction Manager technically supports a JTA/XA transaction spanning multiple EARs on the same cell (Payment Hub could, in principle, open an XA transaction directly against CBS's `jdbc/CBSDataSource`). This roadmap deliberately avoids that. Reasons:
+- A shared distributed transaction across two independently deployed applications couples their failure domains and deployment lifecycles tightly — a Payment Hub redeploy or crash mid-transaction now has to be reasoned about in terms of CBS's own transactional integrity, not just Payment Hub's.
+- **CBS remains the sole writer** (per the Governing Rule) specifically so that the hard part — atomic balance updates — happens inside one application, in one local transaction, where it's straightforward. Payment Hub's job is routing and coordination, not participating in CBS's local transaction.
+- This is why Payment Hub "coordinates settlement... never writes balances directly" — it's not just an ownership rule, it's the reason a distributed XA transaction was never needed here in the first place. The same reasoning applies everywhere this pattern recurs later in the roadmap: Notification Service consuming events, the IBM MQ external payment leg (Part-2 v19, reused here), and Part-9 v66's SQS/SNS migration decision.
+
+`SetupDoc-v25.md`'s Deployment Model / dependency-ordering notes should reference this note rather than restate it.
 
 ### Banking Features Added
 **Payment Systems**
@@ -706,6 +724,8 @@ Auto-Debit on Due Date
 
 **Why this version exists:** Flagged during Part-3 review — Loan Management was referenced in the Part-2 Capstone (v22) feature list as something the platform "combines," but no version anywhere actually built it. Given lending is core to any real bank and adds genuinely new WebSphere topics (EJB Timer Service, batch accrual) not exercised elsewhere in the roadmap, it's added here to complete Part-3.
 
+**Note on this module's home (added 2026-07-20 architecture review):** Loan Management is added here, inside CBS, consistent with the Version 23 decision that CBS stays a single application throughout this roadmap (see that version's "Architectural Decision" note). If a future Part ever explores decomposing CBS, Loans — with its genuinely distinct lifecycle and regulatory profile versus core Deposits/Accounts — is the most natural first candidate to split out; that's flagged there as an option, not committed to here.
+
 ---
 
 ## Enterprise Architecture After Part-3
@@ -762,7 +782,7 @@ Internet Banking  Mobile Banking   ATM Sim      Card Portal
                        ONLY application that writes here)
 ```
 
-**Total deployable applications by end of Part-3:** Internet Banking Portal, CBS, Payment Hub, Notification Service, Reporting Service, Branch Portal, Card Portal (**7 WAS EARs**) + Mobile Banking, ATM Simulator (**2 Tomcat apps**) = **9 distinct deployable applications**, all governed by the single rule that only CBS writes to `digistack_cbs`.
+**Total deployable applications by end of Part-3:** Internet Banking Portal, CBS, Payment Hub, Notification Service, Reporting Service, Branch Portal, Card Portal (**7 WAS EARs**) + Mobile Banking, ATM Simulator (**2 Tomcat apps**) = **9 distinct deployable applications**, all governed by a single rule that only CBS writes to `digistack_cbs`.
 
 ---
 
@@ -806,6 +826,8 @@ Before starting Part-4 (Enterprise Observability), confirm the following are in 
 7. ✅ **Branch Portal** — explicitly scoped as its own separate WebSphere application at v29, presentation-only, no direct DB access.
 8. ✅ **Reconciliation** — concrete feature inside Version 29's EOD, generated by Reporting Service.
 9. **Card expiry/renewal** and **POS as a separate app** — both confirmed as deliberate, documented omissions to keep this Part from over-expanding further.
+10. ✅ **CBS stays a single application** (added 2026-07-20 architecture review) — an explicit, stated decision at Version 23, not a silent omission; Loan Management (v30) is flagged as the natural first candidate if CBS decomposition is ever explored in a future Part.
+11. ✅ **Payment Hub's coordination pattern named** (added 2026-07-20 architecture review) — Version 25 now explicitly states this is a Saga/compensating-transaction pattern chosen to avoid a distributed XA transaction spanning independently deployed EARs, and why.
 
 **Renumbering summary (for your records):**
 | Old # | Old Title | New # | New Title |
@@ -825,3 +847,11 @@ Before starting Part-4 (Enterprise Observability), confirm the following are in 
 ---
 
 *This document is Part-3 of the DigiStack Bank Roadmap (Versions 23–30: Enterprise Banking Systems — CBS, Payments, Mobile/ATM Channel Simulators on Tomcat, Card Portal on WebSphere, Loans). See Part-1 for Versions 1–14, Part-2 for Versions 15–22, and the MASTER INDEX for full navigation.*
+
+---
+
+**Change log for this revision (2026-07-20 architecture review):**
+- Added "Architectural Decision: CBS Stays a Single Application" note to Version 23 (Finding 1) — makes explicit that CBS's lack of internal decomposition is a deliberate choice, with rationale, not a silent gap.
+- Added "Why This Isn't a Distributed (Cross-EAR) Transaction" note to Version 25 (Finding 3) — names the Saga/compensating-transaction pattern Payment Hub already used implicitly, and explains why a shared XA transaction across EARs was deliberately avoided.
+- Added a short cross-reference note to Version 30 pointing back to the Version 23 decision, since Loans is the module most likely to prompt "why isn't this its own service" questions.
+- Updated the Module Sufficiency Review's decision list with items 10 and 11 reflecting both additions.
