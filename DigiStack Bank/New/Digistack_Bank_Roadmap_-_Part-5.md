@@ -142,6 +142,7 @@ Each drill in this version isn't considered closed until the recovered member/no
 ### WebSphere Topics Covered
 - Cluster Failover, Session Persistence, Plugin Routing, Workload Management
 - **Core Groups** — Core Group Bridge (communication between Core Groups), Core Group Policies (which HAManager singleton services run where), DCS (Data Replication Service — the underlying transport Core Groups use for heartbeat and state replication) — standard WebSphere HA interview topics, exercised here rather than just named
+- **Messaging Engine HA** (added per Senior Architect Review, Finding #5) — SIBus's Messaging Engine has been load-bearing infrastructure since Part-2 v15 (Fund Transfer async processing) but its own HA story was never covered separately from generic cluster failover. Messaging Engines are singleton services with their own Core Group Policy-driven failover binding — a genuinely different concern from ordinary cluster member failover. Covered here, as a natural extension of the Core Groups material above: **Messaging Engine failover policy** (which cluster member hosts the active ME, and how Core Group Policy governs failover to another member), and the **ME data store** — file store vs. DB store — with the consequence that a file-store ME failing over to another cluster member can lose access to in-flight/uncommitted messages, unlike a DB-backed store. Exercised directly against this version's existing "kill a cluster member mid-Fund-Transfer" drill (Scenario A) — confirm whether the ME failed over cleanly and whether any in-flight JMS message was affected, given the data store type actually configured.
 - Node Synchronization — Node Sync, Full Resynchronization, Repository Synchronization (post-recovery, see above)
 
 ### Enterprise Learning
@@ -445,6 +446,7 @@ Every production exercise above is confirmed via Grafana (cluster/DB/MQ health),
 
 ### WebSphere Topics Covered
 - XA Transaction Recovery, JDBC Failover, Rolling Deployment, Plugin Regeneration, Fix Pack Management, backupConfig/restoreConfig (full inventory), Change Management
+- **Transaction Log & XA Recovery — Heuristic Completion** (added per Senior Architect Review, Finding #4) — "In-flight Transaction Recovery" above names the *result* (a transaction isn't lost or duplicated); this names the actual mechanism behind it. WebSphere's **Transaction Log** (`tranlog`) records in-doubt XA transactions so that, on server restart after a crash mid-two-phase-commit, WebSphere can automatically resolve most in-doubt transactions by replaying the log against the resource managers involved. The harder, genuinely differentiating case is **heuristic completion**: situations where a resource manager (e.g., PostgreSQL) and the WebSphere Transaction Manager disagree on the outcome of a transaction — one believes it committed, the other believes it rolled back — and automatic recovery isn't possible; an administrator must manually inspect the transaction log and force a heuristic outcome (heuristic commit, heuristic rollback, or heuristic mixed/hazard, if different resource managers within the same transaction ended up in different states). This is exercised directly against v36's Scenario A (JVM crashes mid-Fund-Transfer): after that drill, locate the transaction log, confirm whether recovery was automatic or required manual heuristic resolution, and document which occurred.
 
 ### Enterprise Learning
 Business Continuity Planning, Transaction Integrity, Idempotency Design, Database HA, Messaging HA, Zero-Downtime Operations, DR Runbook Execution, Post-Incident Review
@@ -490,3 +492,9 @@ This is the exact starting point Part-6 (Multi-Region Enterprise Banking) picks 
 ---
 
 *This document is Part-5 of the DigiStack Bank Roadmap (Versions 36–38: Enterprise HA, DR & Business Continuity). See Part-1 for Versions 1–14, Part-2 for Versions 15–22, Part-3 for Versions 23–30, Part-4 for Versions 31–35, and the MASTER INDEX for full navigation.*
+
+---
+
+**Change log for this revision (Senior Architect Review follow-up):**
+- Added "Messaging Engine HA" (failover policy, file store vs. DB store) to Version 36's WebSphere Topics Covered, per Finding #5.
+- Added "Transaction Log & XA Recovery — Heuristic Completion" to Version 38's WebSphere Topics Covered, per Finding #4.

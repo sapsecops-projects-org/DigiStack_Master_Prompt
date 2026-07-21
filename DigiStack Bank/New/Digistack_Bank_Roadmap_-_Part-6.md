@@ -53,6 +53,12 @@ Because no version in the Part-6 draft had been implemented, and the only change
 
 This layer is referenced by filename cross-reference in each version below rather than repeated per-version — consistent with how doc 07 (Configuration & Cross-Cutting Standards) is referenced rather than duplicated elsewhere in the roadmap.
 
+### ⚠️ Data Residency / Multi-Region Data Model — Explicit Decision (added per Senior Architect Review, Finding #9)
+
+> Version 39 stands up each region with its own **independent** PostgreSQL Primary/Standby cluster, implying regional data silos. Version 41 then adds cross-region customer lookup and account verification, which only makes sense if a customer's data can legitimately be found from another region — implying the regions are not fully independent after all. This ambiguity is resolved here, before either version is built, since it materially changes what v41's deliverable actually does:
+>
+> **Resolution: data-residency model.** Each region's CIF (Customer Information File, Part-3 v24) is authoritative for its own region's customers — this is not one global customer table sharded by region, and there is no replicated global customer index anywhere in this design. **"Cross-region customer lookup" (v41) means a live query into a foreign region's CBS, over the v41 mTLS-secured REST channel, at the moment it's needed** — not a query against a local, eventually-consistent copy of another region's data. This mirrors how real multi-country banks commonly operate under data-residency regulation: a customer's data legitimately lives in one region, and other regions reach it live, on demand, rather than replicating it wholesale. If a future version needs different semantics (e.g., a genuinely global customer able to transact identically from any region), that is a new, explicitly-scoped data-model change — not something to assume silently follows from v41's lookup feature as written.
+
 ---
 
 ## Version 39 — Multi-Region Banking Architecture
@@ -241,6 +247,10 @@ Provide centralized authentication and consistent security across all regions, s
 ### LTPA Key Synchronization — Why It Gets Its Own Subsection
 Single Sign-On across India/Singapore/Dubai cells depends entirely on every cell trusting the same LTPA keys. If keys are generated independently per cell (the default), a token issued by India is rejected by Singapore, and SSO silently fails — often the least obvious failure mode to debug in a federated WebSphere environment, and a recurring real-world interview topic. This version's deliverable explicitly proves keys are exported from one cell and imported into the other two, not merely that each cell has *a* working LTPA configuration in isolation.
 
+### ⚠️ Registry Migration Note (added per Senior Architect Review, Finding #7)
+
+> Part-1 v10 introduced "File Registry (or LDAP)" for Customer/Administrator roles, without committing to which was actually built. This version introduces Central LDAP as part of Global Shared Services. If v10 was built as a **file-based registry**, this version is a clean cutover — there are no pre-existing user IDs/group mappings that need to survive the move, and that should be stated plainly in `SetupDoc-v42.md` rather than left ambiguous. If v10 was instead built directly against LDAP already, then this version's job is **federating** that existing LDAP into the new central/multi-region identity layer, and `SetupDoc-v42.md` must document how existing users/groups/role mappings carry over — UID/DN mapping mismatches between a standalone registry and a federated repository are a common real-world WebSphere security-realm migration failure mode, and this project should name that risk explicitly rather than silently assume a smooth cutover, consistent with how Part-7 treats the WAS *platform* migration.
+
 ### Trust Association Interceptor (TAI) — Concept
 Covered at concept level only (no dedicated external SSO product installed, consistent with how Part-4 treats Dynatrace/AppDynamics/Instana as concepts-only): TAI is how WebSphere delegates authentication decisions to an external reverse-proxy or SSO product sitting in front of the application server, rather than performing authentication itself. Understanding where TAI fits relative to LTPA/SSO is the expected takeaway, not a working TAI deployment.
 
@@ -392,3 +402,9 @@ This is the starting point for whichever Part comes next.
 ---
 
 *This document is Part-6 of the DigiStack Bank Roadmap (Versions 39–43: Multi-Region Enterprise Banking & Middleware Architecture). See Part-1 for Versions 1–14, Part-2 for Versions 15–22, Part-3 for Versions 23–30, Part-4 for Versions 31–35, Part-5 for Versions 36–38, and the MASTER INDEX for full navigation.*
+
+---
+
+**Change log for this revision (Senior Architect Review follow-up):**
+- Added an explicit "Data Residency / Multi-Region Data Model" decision to the Standing Architectural Layer section, resolving the silo-vs-global ambiguity between v39 and v41, per Finding #9.
+- Added a "Registry Migration Note" to Version 42, addressing the undefined file/LDAP → federated LDAP migration path, per Finding #7.

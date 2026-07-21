@@ -245,6 +245,8 @@ A one-time migration script, following the standard `V<N>__<description>.sql` co
 
 **Satellite Services Introduced Here**
 
+> ⚠️ **Accepted tradeoff (added per Senior Architect Review, Finding #6): Reporting Service reads `digistack_cbs` directly, read-only, from this version through Part-8.** Report generation (especially the large Transaction Report from Part-1 v14, deliberately designed to stress the heap with multi-thousand rows) running against the same database instance serving live Fund Transfers is a genuine OLTP/OLAP contention risk. This is a deliberately **deferred**, not solved-early, tradeoff — a lightweight on-prem read replica isn't introduced here because it would require inserting new infrastructure scope into an already-frozen Part (per Engineering Standards §7's Version Numbering Freeze discipline), and the roadmap's PostgreSQL streaming-replication skills aren't taught until Part-5 v37/v38 anyway. **Reporting Service's direct OLTP read is closed by Part-9 v64's RDS read replica** — until then, it's a known, accepted risk, not a silent gap.
+
 > **Notification Service and Reporting Service** become **independent WebSphere applications** in this version — not modules inside CBS. CBS publishes transaction events (directly or via IBM MQ); Notification Service consumes these events to deliver SMS/Email alerts; Reporting Service consumes transaction data to generate operational and customer reports. **Neither service performs core banking transactions or updates account balances — CBS remains the sole system of record**, per the Governing Rule above. This split is chosen deliberately for independent deployment, scaling, and maintenance — and for the additional WAS administration practice of managing two more distinct EARs with their own lifecycles.
 
 ```
@@ -855,3 +857,8 @@ Before starting Part-4 (Enterprise Observability), confirm the following are in 
 - Added "Why This Isn't a Distributed (Cross-EAR) Transaction" note to Version 25 (Finding 3) — names the Saga/compensating-transaction pattern Payment Hub already used implicitly, and explains why a shared XA transaction across EARs was deliberately avoided.
 - Added a short cross-reference note to Version 30 pointing back to the Version 23 decision, since Loans is the module most likely to prompt "why isn't this its own service" questions.
 - Updated the Module Sufficiency Review's decision list with items 10 and 11 reflecting both additions.
+
+---
+
+**Change log for this revision (Senior Architect Review follow-up):**
+- Added an explicit "Accepted tradeoff" note to Version 23 documenting Reporting Service's direct OLTP read of `digistack_cbs` as a known, deferred risk (closed at Part-9 v64), per Finding #6.

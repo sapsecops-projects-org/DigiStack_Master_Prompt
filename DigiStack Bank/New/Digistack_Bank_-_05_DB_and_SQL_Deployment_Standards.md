@@ -84,12 +84,12 @@ COMMIT;
 
 **Minimum required practice, every environment, from Version 1:**
 
-1. **Daily `pg_dump`** of every database in use at that point in the roadmap (the single shared DB through v22; `digistack_cbs` — and the legacy DB until its v23-era decommission — from v23 onward).
-2. **Weekly restore test** — restore the most recent dump into a scratch database and confirm it loads cleanly and the app can read from it. An untested backup is not a backup.
-3. **Retention:** keep the last 7 daily dumps and the last 4 weekly restore-test confirmations (rolling window) — document the exact retention window and where dumps are stored in the relevant `SetupDoc-v<N>.md`.
+1. **Weekly `pg_dump`** of every database in use at that point in the roadmap (the single shared DB through v22; `digistack_cbs` — and the legacy DB until its v23-era decommission — from v23 onward).
+2. **Restore test every 15 days** — restore the most recent dump into a scratch database and confirm it loads cleanly and the app can read from it. An untested backup is not a backup.
+3. **Retention:** keep the last 4 weekly dumps and the last 2 restore-test confirmations (rolling window, roughly a month of coverage at this cadence) — document the exact retention window and where dumps are stored in the relevant `SetupDoc-v<N>.md`.
 4. **Naming convention:** `digistack_<db_name>_<env>_<YYYYMMDD>.dump` (e.g., `digistack_cbs_dev_20260722.dump`), stored outside the DB VM itself (a second disk, a dedicated backup share, or — from Part-9 v58 onward — the S3-based off-site target already established there).
 
-**What this is not:** this is the *baseline* practice, not the final word on DB continuity. Part-5 v37/v38 still owns the advanced topics this baseline deliberately defers — streaming replication, PITR, automated failover, the full expanded backup inventory across every component (WAS config, IHS, plugin, certs, EARs, Git, dashboards). The daily-dump/weekly-restore-test baseline above exists so that Versions 1–36 aren't running with zero DB-native backup story while waiting for those advanced topics to arrive.
+**What this is not:** this is the *baseline* practice, not the final word on DB continuity. Part-5 v37/v38 still owns the advanced topics this baseline deliberately defers — streaming replication, PITR, automated failover, the full expanded backup inventory across every component (WAS config, IHS, plugin, certs, EARs, Git, dashboards). The weekly-dump/15-day-restore-test baseline above exists so that Versions 1–36 aren't running with zero DB-native backup story while waiting for those advanced topics to arrive.
 
 ## Environment-Specific DB Deployment (ties into Environment Promotion Standards)
 
@@ -132,4 +132,7 @@ CREATE TABLE IF NOT EXISTS schema_version (
 ---
 
 **Change log for this revision (2026-07-20 architecture review):**
-- Added "Database Backup Practice (required from Version 1 onward)" section — daily `pg_dump` + weekly restore test + defined retention, closing the gap where no DB-native backup discipline existed until Part-5 v38.
+- Added "Database Backup Practice (required from Version 1 onward)" section — closing the gap where no DB-native backup discipline existed until Part-5 v38.
+
+**Change log for this revision (cadence update):**
+- Backup cadence changed from daily `pg_dump` to **weekly `pg_dump`**, and restore-test cadence changed from weekly to **every 15 days**, per explicit direction. Retention window adjusted accordingly (last 4 weekly dumps, last 2 restore-test confirmations — roughly a month of coverage at this cadence).

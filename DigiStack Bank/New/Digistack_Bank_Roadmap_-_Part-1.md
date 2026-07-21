@@ -134,6 +134,14 @@ JDBC Providers, DataSources, JNDI, connection pooling, transactions.
 ### WebSphere Topics Covered
 - JDBC Providers, Datasources, JNDI, Connection Pool, Validation, Transactions
 
+### ⚠️ Connection Pool Sizing — Worked Example (added per Senior Architect Review, Finding #10)
+
+> Pool sizing is a genuine real-world failure mode that's easy to overlook until it happens under load: connection exhaustion at the **database** level, not the app server level. The arithmetic is simple but rarely written down anywhere, so it's captured here once for reuse whenever clustering (v5) or additional cluster members are added later in the roadmap:
+>
+> **Rule:** `(cluster members × max connection pool size per member) + admin/replication headroom ≤ PostgreSQL max_connections`
+>
+> **Example:** 3 cluster members × a 50-connection pool each = 150 connections required at peak, against PostgreSQL's out-of-the-box default `max_connections = 100`. That configuration would exhaust the database's connection limit under load long before any single app server's pool is actually full — a classic "the app server looks fine, the database is what's actually starved" incident. Either the per-member pool size must shrink, the cluster size must be accounted for when sizing `max_connections`, or both — sized deliberately, not left at defaults on either side. Document the actual numbers chosen for this project's pool size and `max_connections` in `SetupDoc-v7.md`, and revisit the math explicitly any time cluster membership changes (e.g., Part-1 v5, Part-6 v39's regional clusters).
+
 **Sprint Deliverable:** All existing features (login, deposit/withdraw, freeze) now read/write exclusively through a JNDI-looked-up, WAS-managed connection pool — no hardcoded JDBC URL or credentials remain anywhere in the code.
 
 ---
@@ -312,3 +320,8 @@ No further action needed here — this note is kept only as a historical record 
 ---
 
 *This document is Part-1 of the DigiStack Bank Roadmap (Versions 1–14). Subsequent parts continue in separate roadmap documents.*
+
+---
+
+**Change log for this revision (Senior Architect Review follow-up):**
+- Added a worked connection pool sizing example (cluster members × pool size vs. PostgreSQL `max_connections`) to Version 7, per Finding #10.
